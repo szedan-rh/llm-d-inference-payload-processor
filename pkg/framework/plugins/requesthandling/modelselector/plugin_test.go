@@ -94,11 +94,6 @@ func mustAddPlugins(t *testing.T, p *ModelSelectorPlugin, plugins ...fwkplugin.P
 	}
 }
 
-// profile returns the ModelSelectorProfile for inspection in tests.
-func profile(p *ModelSelectorPlugin) *ms.ModelSelectorProfile {
-	return p.Profile()
-}
-
 // TestProcessRequestSelectsFromDatastoreModels checks that the selected model is one of the candidates registered in the datastore.
 func TestProcessRequestSelectsFromDatastoreModels(t *testing.T) {
 	candidates := []string{"llama-70b", "llama-8b", "mistral-7b"}
@@ -147,7 +142,7 @@ func TestAddPluginsWiresScorer(t *testing.T) {
 	scorer := costaware.NewCostScorer()
 	mustAddPlugins(t, p, ms.NewWeightedScorer(scorer, 2.0))
 
-	scorers := profile(p).Scorers()
+	scorers := p.Profile().Scorers()
 	if len(scorers) != 1 || scorers[0].TypedName().Type != costaware.CostScorerType {
 		t.Errorf("expected one scorer of type %q, got %v", costaware.CostScorerType, scorers)
 	}
@@ -161,7 +156,7 @@ func TestAddPluginsWiresPicker(t *testing.T) {
 	p := mustFactory(t, newFakeHandle("model-a"))
 	mustAddPlugins(t, p, maxscore.NewMaxScorePicker())
 
-	got := profile(p).Picker()
+	got := p.Profile().Picker()
 	if got == nil || got.TypedName().Type != maxscore.MaxScorePickerType {
 		t.Errorf("expected picker type %q, got %v", maxscore.MaxScorePickerType, got)
 	}
@@ -213,7 +208,7 @@ func TestAddPluginsPluginImplementingBothScorerAndFilter(t *testing.T) {
 	p := mustFactory(t, newFakeHandle("model-a"))
 	mustAddPlugins(t, p, ms.NewWeightedScorer(dual, 1.0))
 
-	prof := profile(p)
+	prof := p.Profile()
 	if len(prof.Filters()) != 1 || prof.Filters()[0].TypedName().Name != "dual" {
 		t.Errorf("expected dual in filters, got %v", prof.Filters())
 	}
