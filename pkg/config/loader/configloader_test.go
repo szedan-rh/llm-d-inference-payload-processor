@@ -32,14 +32,19 @@ import (
 	"github.com/llm-d/llm-d-inference-payload-processor/pkg/framework/interface/plugin"
 	"github.com/llm-d/llm-d-inference-payload-processor/pkg/framework/interface/requesthandling"
 	"github.com/llm-d/llm-d-inference-payload-processor/pkg/framework/plugins/datalayer/notificationsource"
+	"github.com/llm-d/llm-d-inference-payload-processor/pkg/framework/plugins/modelselector/picker/maxscore"
+	"github.com/llm-d/llm-d-inference-payload-processor/pkg/framework/plugins/modelselector/scorer/costaware"
 	"github.com/llm-d/llm-d-inference-payload-processor/pkg/framework/plugins/requesthandling/basemodelextractor"
 	"github.com/llm-d/llm-d-inference-payload-processor/pkg/framework/plugins/requesthandling/bodyfieldtoheader"
+	modelselectorplugin "github.com/llm-d/llm-d-inference-payload-processor/pkg/framework/plugins/requesthandling/modelselector"
 	"github.com/llm-d/llm-d-inference-payload-processor/pkg/framework/plugins/requesthandling/profilepicker/single"
+	ms "github.com/llm-d/llm-d-inference-payload-processor/pkg/modelselector"
 )
 
 // Define constants for test plugins.
 // Constants must match those used in testdata_test.go.
 const (
+	testFilterType       = "test-filter"
 	testPickerType       = "test-picker"
 	testPluginType       = "test-plugin"
 	testProfilePicker    = "test-profile-picker"
@@ -309,7 +314,6 @@ func TestBuildProfiles(t *testing.T) {
 				}
 				return
 			}
-
 			require.NoError(t, err, "applyDefaultPlugins failed")
 			require.NoError(t, errProf, "buildProfiles failed")
 			if tc.validate != nil {
@@ -414,6 +418,16 @@ func (m *mockResponseProcessor) ProcessResponse(ctx context.Context, cycleState 
 	return nil
 }
 
+// Mock Filter
+type mockFilter struct{ mockPlugin }
+
+// compile-time type assertion
+var _ modelselector.Filter = &mockFilter{}
+
+func (m *mockFilter) Filter(_ context.Context, _ *plugin.CycleState, _ *requesthandling.InferenceRequest, models []datalayer.Model) []datalayer.Model {
+	return models
+}
+
 // Mock Scorer
 type mockScorer struct{ mockPlugin }
 
@@ -475,4 +489,85 @@ func registerTestPlugins(t *testing.T) {
 		}
 		return &mockScorer{mockPlugin{t: plugin.TypedName{Name: name, Type: testScorerType}}}, nil
 	})
+
+	plugin.Register(testFilterType,
+		func(name string, _ json.RawMessage, _ plugin.Handle) (plugin.Plugin, error) {
+			return &mockFilter{mockPlugin{t: plugin.TypedName{Name: name, Type: testFilterType}}}, nil
+		})
+}
+
+// registerModelSelectorPlugins registers the real model-selector plugin factories used by
+// TestBuildProfilesModelSelectorPlugins.
+func registerModelSelectorPlugins(t *testing.T) {
+	t.Helper()
+	plugin.Register(modelselectorplugin.ModelSelectorPluginType, modelselectorplugin.ModelSelectorPluginFactory)
+	plugin.Register(costaware.CostScorerType, costaware.CostScorerFactory)
+	plugin.Register(maxscore.MaxScorePickerType, maxscore.MaxScorePickerFactory)
+	plugin.Register(testFilterType,
+		func(name string, _ json.RawMessage, _ plugin.Handle) (plugin.Plugin, error) {
+			return &mockFilter{mockPlugin{t: plugin.TypedName{Name: name, Type: testFilterType}}}, nil
+		})
+}
+
+func TestBuildProfilesModelSelectorPlugins(t *testing.T) {
+	// Not parallel: modifies global plugin registry.
+	registerModelSelectorPlugins(t)
+
+	logger := logging.NewTestLogger()
+	handle := plugin.NewHandle(context.Background(), nil, nil)
+
+	cfg, err := LoadConfiguration([]byte(modelSelectorAllPluginTypesText), handle, logger)
+	require.NoError(t, err, "LoadConfiguration should succeed")
+
+	profile, ok := cfg.Profiles["default"]
+	require.True(t, ok, "profile 'default' must exist")
+
+	// model-selector itself is a RequestProcessor and must be in RequestPlugins.
+	require.Len(t, profile.RequestPlugins, 1, "expected one RequestProcessor (the model-selector plugin)")
+	_, isMS := profile.RequestPlugins[0].(*modelselectorplugin.ModelSelectorPlugin)
+	require.True(t, isMS, "RequestPlugins[0] must be a ModelSelectorPlugin")
+
+	// Filter, WeightedScorer (cost-scorer @ 2.5), Picker must be in ModelSelectorPlugins.
+	require.Len(t, profile.ModelSelectorPlugins, 3, "expected three ModelSelectorPlugins (filter, scorer, picker)")
+
+	_, isFilter := profile.ModelSelectorPlugins[0].(modelselector.Filter)
+	require.True(t, isFilter, "ModelSelectorPlugins[0] must implement Filter")
+
+	ws, isWeightedScorer := profile.ModelSelectorPlugins[1].(*ms.WeightedScorer)
+	require.True(t, isWeightedScorer, "ModelSelectorPlugins[1] must be a *WeightedScorer")
+	require.Equal(t, 2.5, ws.Weight(), "scorer weight must be 2.5")
+	require.Equal(t, costaware.CostScorerType, ws.TypedName().Type, "scorer type must be cost-scorer")
+
+	_, isPicker := profile.ModelSelectorPlugins[2].(modelselector.Picker)
+	require.True(t, isPicker, "ModelSelectorPlugins[2] must implement Picker")
+
+	// The model-selector plugin's internal profile must have received the wired plugins.
+	msPlugin := profile.RequestPlugins[0].(*modelselectorplugin.ModelSelectorPlugin)
+	msProfile := msPlugin.Profile()
+	require.Len(t, msProfile.Filters(), 1, "model-selector profile must have one filter")
+	require.Len(t, msProfile.Scorers(), 1, "model-selector profile must have one scorer")
+	require.NotNil(t, msProfile.Picker(), "model-selector profile must have a picker")
+}
+
+func TestBuildProfilesScorerMissingWeight(t *testing.T) {
+	// Not parallel: modifies global plugin registry.
+	registerModelSelectorPlugins(t)
+
+	logger := logging.NewTestLogger()
+	handle := plugin.NewHandle(context.Background(), nil, nil)
+
+	_, err := LoadConfiguration([]byte(modelSelectorScorerMissingWeightText), handle, logger)
+	require.ErrorContains(t, err, "requires a weight")
+}
+
+func TestBuildProfilesUnknownPluginType(t *testing.T) {
+	// Not parallel: modifies global plugin registry.
+	registerTestPlugins(t)
+	registerModelSelectorPlugins(t)
+
+	logger := logging.NewTestLogger()
+	handle := plugin.NewHandle(context.Background(), nil, nil)
+
+	_, err := LoadConfiguration([]byte(modelSelectorUnknownPluginTypeText), handle, logger)
+	require.ErrorContains(t, err, "is not a RequestProcessor, Filter, Scorer, or Picker")
 }

@@ -216,3 +216,57 @@ profiles:
     response:
     - pluginRef: test-response-processor
 `
+
+// modelSelectorAllPluginTypesText wires a Filter, a weighted Scorer, and a Picker
+// alongside a model-selector RequestProcessor plugin in the same profile.
+const modelSelectorAllPluginTypesText = `
+apiVersion: llm-d.ai/v1alpha1
+kind: PayloadProcessorConfig
+plugins:
+- type: model-selector
+- type: test-filter
+- type: cost-scorer
+- type: max-score-picker
+profiles:
+- name: default
+  plugins:
+    request:
+    - pluginRef: model-selector
+    - pluginRef: test-filter
+    - pluginRef: cost-scorer
+      weight: 2.5
+    - pluginRef: max-score-picker
+`
+
+// modelSelectorScorerMissingWeightText is an error case: scorer without a weight.
+const modelSelectorScorerMissingWeightText = `
+apiVersion: llm-d.ai/v1alpha1
+kind: PayloadProcessorConfig
+plugins:
+- type: model-selector
+- type: cost-scorer
+profiles:
+- name: default
+  plugins:
+    request:
+    - pluginRef: model-selector
+    - pluginRef: cost-scorer
+`
+
+// modelSelectorUnknownPluginTypeText is an error case: plugin that is none of the accepted interfaces.
+const modelSelectorUnknownPluginTypeText = `
+apiVersion: llm-d.ai/v1alpha1
+kind: PayloadProcessorConfig
+plugins:
+- type: model-selector
+- name: bare-plugin
+  type: test-plugin
+  parameters:
+    threshold: 1
+profiles:
+- name: default
+  plugins:
+    request:
+    - pluginRef: model-selector
+    - pluginRef: bare-plugin
+`
