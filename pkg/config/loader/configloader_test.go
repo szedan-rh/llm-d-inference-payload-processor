@@ -37,8 +37,8 @@ import (
 	"github.com/llm-d/llm-d-inference-payload-processor/pkg/framework/plugins/requesthandling/basemodelextractor"
 	"github.com/llm-d/llm-d-inference-payload-processor/pkg/framework/plugins/requesthandling/bodyfieldtoheader"
 	modelselectorplugin "github.com/llm-d/llm-d-inference-payload-processor/pkg/framework/plugins/requesthandling/modelselector"
-	ms "github.com/llm-d/llm-d-inference-payload-processor/pkg/modelselector"
 	"github.com/llm-d/llm-d-inference-payload-processor/pkg/framework/plugins/requesthandling/profilepicker/single"
+	ms "github.com/llm-d/llm-d-inference-payload-processor/pkg/modelselector"
 )
 
 // Define constants for test plugins.
@@ -314,44 +314,6 @@ func TestBuildProfiles(t *testing.T) {
 				}
 				return
 			}
-
-<<<<<<< HEAD
-// compile-time type assertion
-var _ requesthandling.ResponseProcessor = &mockResponseProcessor{}
-
-func (m *mockResponseProcessor) ProcessResponse(ctx context.Context, cycleState *plugin.CycleState, request *requesthandling.InferenceResponse) error {
-	return nil
-}
-
-// Mock Scorer
-type mockScorer struct{ mockPlugin }
-
-// compile-time type assertion
-var _ modelselector.Scorer = &mockScorer{}
-
-func (m *mockScorer) Score(ctx context.Context, cycleState *plugin.CycleState, request *requesthandling.InferenceRequest, models []datalayer.Model) map[datalayer.Model]float64 {
-	return nil
-}
-
-// Mock Filter
-type mockFilter struct{ mockPlugin }
-
-// compile-time type assertion
-var _ modelselector.Filter = &mockFilter{}
-
-func (m *mockFilter) Filter(_ context.Context, _ *plugin.CycleState, _ *requesthandling.InferenceRequest, models []datalayer.Model) []datalayer.Model {
-	return models
-}
-
-// Mock Picker
-type mockPicker struct{ mockPlugin }
-
-// compile-time type assertion
-var _ modelselector.Picker = &mockPicker{}
-
-func (m *mockPicker) Pick(ctx context.Context, cycleState *plugin.CycleState, scoredModels []*modelselector.ScoredModel) *modelselector.ProfileRunResult {
-	return nil
-=======
 			require.NoError(t, err, "applyDefaultPlugins failed")
 			require.NoError(t, errProf, "buildProfiles failed")
 			if tc.validate != nil {
@@ -359,7 +321,6 @@ func (m *mockPicker) Pick(ctx context.Context, cycleState *plugin.CycleState, sc
 			}
 		})
 	}
->>>>>>> upstream/main
 }
 
 func TestBuildDatalayer(t *testing.T) {
@@ -455,6 +416,16 @@ var _ requesthandling.ResponseProcessor = &mockResponseProcessor{}
 
 func (m *mockResponseProcessor) ProcessResponse(ctx context.Context, cycleState *plugin.CycleState, request *requesthandling.InferenceResponse) error {
 	return nil
+}
+
+// Mock Filter
+type mockFilter struct{ mockPlugin }
+
+// compile-time type assertion
+var _ modelselector.Filter = &mockFilter{}
+
+func (m *mockFilter) Filter(_ context.Context, _ *plugin.CycleState, _ *requesthandling.InferenceRequest, models []datalayer.Model) []datalayer.Model {
+	return models
 }
 
 // Mock Scorer

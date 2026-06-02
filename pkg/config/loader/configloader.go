@@ -230,7 +230,7 @@ func buildProfiles(rawProfiles []configapi.Profile, handle plugin.Handle) (map[s
 // buildModelSelector iterates all built profiles and, for each model-selector plugin found in
 // RequestPlugins, calls AddPlugins with the profile's ModelSelectorPlugins. If no Picker was
 // configured, MaxScorePicker is used as the default.
-func buildModelSelector(profiles map[string]requesthandling.Profile, _ plugin.Handle) error {
+func buildModelSelector(profiles map[string]*requesthandling.Profile, _ plugin.Handle) error {
 	for _, profile := range profiles {
 		for _, reqPlugin := range profile.RequestPlugins {
 			msPlugin, ok := reqPlugin.(*modelselectorplugin.ModelSelectorPlugin)
