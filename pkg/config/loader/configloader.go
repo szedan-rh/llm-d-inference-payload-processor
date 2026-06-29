@@ -214,9 +214,7 @@ func buildProfiles(rawProfiles []configapi.Profile, handle plugin.Handle) (map[s
 			return nil, fmt.Errorf("the profile %s must have one or both of the Request and Response sections", rawProfile.Name)
 		}
 
-		theProfile := requesthandling.Profile{
-			ResponsePlugins: make([]requesthandling.ResponseProcessor, len(rawProfile.Plugins.Response)),
-		}
+		theProfile := requesthandling.Profile{}
 
 		for _, pluginRef := range rawProfile.Plugins.Request {
 			rawPlugin := handle.Plugin(pluginRef.PluginRef)
@@ -245,17 +243,25 @@ func buildProfiles(rawProfiles []configapi.Profile, handle plugin.Handle) (map[s
 			}
 		}
 
-		for idx, pluginRef := range rawProfile.Plugins.Response {
+		for _, pluginRef := range rawProfile.Plugins.Response {
 			rawPlugin := handle.Plugin(pluginRef.PluginRef)
 			if rawPlugin == nil {
 				return nil, fmt.Errorf("there is no plugin named %s", pluginRef.PluginRef)
 			}
-			thePlugin, ok := rawPlugin.(requesthandling.ResponseProcessor)
-			if !ok {
-				return nil, fmt.Errorf("the plugin named %s is not a ResponseProcessor", pluginRef.PluginRef)
+			if bodyPlugin, ok := rawPlugin.(requesthandling.ResponseProcessor); ok {
+				theProfile.ResponsePlugins = append(theProfile.ResponsePlugins, bodyPlugin)
+				continue
 			}
-			theProfile.ResponsePlugins[idx] = thePlugin
+			if chunkPlugin, ok := rawPlugin.(requesthandling.ResponseChunkProcessor); ok {
+				theProfile.ResponseChunkProcessors = append(theProfile.ResponseChunkProcessors, chunkPlugin)
+				continue
+			}
+			return nil, fmt.Errorf("the plugin named %s is not a ResponseProcessor nor ResponseChunkProcessor", pluginRef.PluginRef)
 		}
+		if len(theProfile.ResponsePlugins) > 0 && len(theProfile.ResponseChunkProcessors) > 0 {
+			return nil, fmt.Errorf("profile %s mixes ResponseProcessor and ResponseChunkProcessor plugins — a profile must use one type exclusively", rawProfile.Name)
+		}
+		theProfile.NeedsResponseBuffering = len(theProfile.ResponsePlugins) > 0
 
 		profiles[rawProfile.Name] = &theProfile
 	}

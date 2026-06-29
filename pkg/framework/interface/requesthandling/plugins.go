@@ -43,11 +43,21 @@ type RequestProcessor interface {
 	ProcessRequest(ctx context.Context, cycleState *plugin.CycleState, request *InferenceRequest) error
 }
 
+// ResponseProcessor processes the complete buffered response body.
+// If any plugin in a profile implements this interface, the framework buffers
+// the entire response before calling ProcessResponse on each such plugin.
 type ResponseProcessor interface {
 	plugin.Plugin
-	// ProcessResponse runs the ResponseProcessor plugin.
-	// ResponseProcessor can mutate the headers and/or the body of the response.
 	ProcessResponse(ctx context.Context, cycleState *plugin.CycleState, response *InferenceResponse) error
+}
+
+// ResponseChunkProcessor processes individual response body chunks as they
+// stream through without buffering. The framework converts the raw chunk bytes
+// to a string once and passes it to all chunk processors. Plugins receive the
+// InferenceResponse to allow header mutation.
+type ResponseChunkProcessor interface {
+	plugin.Plugin
+	ProcessResponseChunk(ctx context.Context, cycleState *plugin.CycleState, response *InferenceResponse, chunk string, isFinal bool) error
 }
 
 type PostProcessor interface {

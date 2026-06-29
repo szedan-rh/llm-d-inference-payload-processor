@@ -76,6 +76,7 @@ type RequestContext struct {
 	RequestSentTimestamp        time.Time
 	ResponseFirstChunkTimestamp time.Time
 	ResponseCompleteTimestamp   time.Time
+	ResponseHeadersSent         bool
 	Profile                     *requesthandling.Profile
 	CycleState                  *plugin.CycleState
 	Request                     *requesthandling.InferenceRequest
@@ -176,15 +177,25 @@ func (s *Server) Process(srv extProcPb.ExternalProcessor_ProcessServer) error {
 			if reqCtx.ResponseFirstChunkTimestamp.IsZero() {
 				reqCtx.ResponseFirstChunkTimestamp = time.Now()
 			}
-			responseBody = append(responseBody, v.ResponseBody.Body...)
-			if !v.ResponseBody.EndOfStream {
-				continue
+
+			if reqCtx.Profile.NeedsResponseBuffering {
+				responseBody = append(responseBody, v.ResponseBody.Body...)
+				if !v.ResponseBody.EndOfStream {
+					// Keep accumulating — don't send responses or record metrics yet.
+					break
+				}
+				responses, err = s.HandleResponseBody(ctx, reqCtx, responseBody)
+				loggerVerbose.Info("processing response body complete")
+			} else {
+				responses, err = s.HandleResponseChunk(ctx, reqCtx, v.ResponseBody.Body, v.ResponseBody.EndOfStream)
+				loggerVerbose.Info("response chunk processing complete")
 			}
-			reqCtx.ResponseCompleteTimestamp = time.Now()
-			model, _ := reqCtx.Request.Body["model"].(string)
-			metrics.RecordRequestTTFT(model, reqCtx.ResponseFirstChunkTimestamp.Sub(reqCtx.RequestReceivedTimestamp))
-			responses, err = s.HandleResponseBody(ctx, reqCtx, responseBody)
-			loggerVerbose.Info("processing response body complete")
+
+			if v.ResponseBody.EndOfStream {
+				reqCtx.ResponseCompleteTimestamp = time.Now()
+				model, _ := reqCtx.Request.Body["model"].(string)
+				metrics.RecordRequestTTFT(model, reqCtx.ResponseFirstChunkTimestamp.Sub(reqCtx.RequestReceivedTimestamp))
+			}
 		case *extProcPb.ProcessingRequest_ResponseTrailers:
 			responses, err = s.HandleResponseTrailers(v.ResponseTrailers)
 		default:
