@@ -58,6 +58,7 @@ func NewServer(preProcessors []requesthandling.RequestProcessor, profilePicker r
 		profiles:                      profiles,
 		postProcessors:                postProcessors,
 		responseHeadersPostProcessors: responseHeadersPostProcessors,
+		emptyProfile:                  requesthandling.NewProfile(),
 	}
 }
 
@@ -76,6 +77,8 @@ type Server struct {
 	postProcessors                []requesthandling.ResponseProcessor
 	responseHeadersPostProcessors []requesthandling.ResponseHeadersProcessor
 	eventNotifier                 datasource.EventNotifier
+
+	emptyProfile *requesthandling.Profile
 }
 
 // RequestContext stores context information during the lifetime of an HTTP request.
@@ -133,6 +136,7 @@ func (s *Server) Process(srv extProcPb.ExternalProcessor_ProcessServer) error {
 	reqCtx := &RequestContext{
 		Request:    requesthandling.NewInferenceRequest(),
 		Response:   requesthandling.NewInferenceResponse(),
+		Profile:    s.emptyProfile, // request is always initialized with an empty profile to avoid nil pointer
 		CycleState: plugin.NewCycleState(),
 	}
 	// TODO set a max cap on these.
